@@ -31,32 +31,31 @@ jobs:
           - { name: "arm64v8", target: "aarch64-unknown-linux-musl" }
           - { name: "armv7",   target: "armv7-unknown-linux-musleabihf" }
           - { name: "i386",    target: "i686-unknown-linux-musl" }
+          #- { name: "amd64fb", target: "x86_64-unknown-freebsd" }
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           submodules: recursive
-
+    
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@v1
         with:
-          toolchain: "stable"
+          toolchain: stable
           targets: ${{ matrix.job.target }}
           components: "rustfmt"
-
+          
       - uses: Swatinem/rust-cache@v2
         with:
           prefix-key: ${{ matrix.job.os }}
 
-
-      # ✅ 新增：安装 cross 工具
-      - name: Install cross
-        run: cargo install cross --git https://github.com/cross-rs/cross  # ✅ 新增
-
-      # ✅ 修改：使用 cross 构建替换原 actions-rs/cargo
-      - name: Build with cross
-        run: cross build --release --workspace --all-features --target=${{ matrix.job.target }}  # ✅ 修改
+      - name: Build
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release --all-features --target=${{ matrix.job.target }}
+          use-cross: true  
 
       - name: Exec chmod
         run: chmod -v a+x target/${{ matrix.job.target }}/release/*
@@ -70,10 +69,10 @@ jobs:
             target/${{ matrix.job.target }}/release/hbbs
             target/${{ matrix.job.target }}/release/rustdesk-utils
           if-no-files-found: error
-
+  
   # Build and push single-arch Docker images to ghcr.io
   create-s6-overlay-images:
-    name: Docker push - ${{ matrix.job.name }}
+    name: Docker push s6-overlay - ${{ matrix.job.name }}
     needs: build
     runs-on: ubuntu-24.04
     strategy:
@@ -83,7 +82,7 @@ jobs:
           - { name: "amd64",   docker_platform: "linux/amd64",  s6_platform: "x86_64" }
           - { name: "arm64v8", docker_platform: "linux/arm64",  s6_platform: "aarch64" }
           - { name: "armv7",   docker_platform: "linux/arm/v7", s6_platform: "armhf" }
-          - { name: "i386",    docker_platform: "linux/386",    s6_platform: "i686" }
+#          - { name: "i386",    docker_platform: "linux/386",    s6_platform: "i686" }
 
     steps:
       - name: Checkout
@@ -128,7 +127,6 @@ jobs:
           M=${T%%.*}
           echo "GIT_TAG=$T" >> $GITHUB_ENV
           echo "MAJOR_TAG=$M" >> $GITHUB_ENV
-
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
@@ -143,7 +141,7 @@ jobs:
             ghcr.io/${{ github.repository }}-s6:${{ env.GIT_TAG }}-${{ matrix.job.name }}
             ghcr.io/${{ github.repository }}-s6:${{ env.MAJOR_TAG }}-${{ matrix.job.name }}
           labels: ${{ steps.meta.outputs.labels }}
-          
+
   # Set up minifest and tag for pushed image
   create-s6-overlay-images-manifest:
     name: Manifest for s6-overlay images
@@ -166,47 +164,46 @@ jobs:
           M=${T%%.*}
           echo "GIT_TAG=$T" >> $GITHUB_ENV
           echo "MAJOR_TAG=$M" >> $GITHUB_ENV
-
       # Create and push manifest for :ve.rs.ion tag
       - name: Create and push manifest (:ve.rs.ion)
         uses: Noelware/docker-manifest-action@master
         if: github.event_name != 'workflow_dispatch'
         with:
-          base-image: ghcr.io/${{ github.repository }}-s6:${{ env.GIT_TAG }}
-          extra-images: |
+          tags: ghcr.io/${{ github.repository }}-s6:${{ env.GIT_TAG }}
+          inputs: |
             ghcr.io/${{ github.repository }}-s6:${{ env.GIT_TAG }}-amd64,
             ghcr.io/${{ github.repository }}-s6:${{ env.GIT_TAG }}-arm64v8,
             ghcr.io/${{ github.repository }}-s6:${{ env.GIT_TAG }}-armv7,
-            ghcr.io/${{ github.repository }}-s6:${{ env.GIT_TAG }}-i386
+#            ghcr.io/${{ github.repository }}-s6:${{ env.GIT_TAG }}-i386
           push: true
 
       # Create and push manifest for :major tag
       - name: Create and push manifest (:major)
         uses: Noelware/docker-manifest-action@master
         with:
-          base-image: ghcr.io/${{ github.repository }}-s6:${{ env.MAJOR_TAG }}
-          extra-images: |
+          tags: ghcr.io/${{ github.repository }}-s6:${{ env.MAJOR_TAG }}
+          inputs: |
             ghcr.io/${{ github.repository }}-s6:${{ env.MAJOR_TAG }}-amd64,
             ghcr.io/${{ github.repository }}-s6:${{ env.MAJOR_TAG }}-arm64v8,
             ghcr.io/${{ github.repository }}-s6:${{ env.MAJOR_TAG }}-armv7,
-            ghcr.io/${{ github.repository }}-s6:${{ env.MAJOR_TAG }}-i386
+#            ghcr.io/${{ github.repository }}-s6:${{ env.MAJOR_TAG }}-i386
           push: true
 
       # Create and push manifest for :latest tag
       - name: Create and push manifest (:latest)
         uses: Noelware/docker-manifest-action@master
         with:
-          base-image: ghcr.io/${{ github.repository }}-s6:${{ env.LATEST_TAG }}
-          extra-images: |
+          tags: ghcr.io/${{ github.repository }}-s6:${{ env.LATEST_TAG }}
+          inputs: |
             ghcr.io/${{ github.repository }}-s6:${{ env.LATEST_TAG }}-amd64,
             ghcr.io/${{ github.repository }}-s6:${{ env.LATEST_TAG }}-arm64v8,
             ghcr.io/${{ github.repository }}-s6:${{ env.LATEST_TAG }}-armv7,
-            ghcr.io/${{ github.repository }}-s6:${{ env.LATEST_TAG }}-i386
+#            ghcr.io/${{ github.repository }}-s6:${{ env.LATEST_TAG }}-i386
           push: true
 
   # Build and push single-arch Docker images to ghcr.io
   create-classic-images:
-    name: Docker push - ${{ matrix.job.name }}
+    name: Docker push classic - ${{ matrix.job.name }}
     needs: build
     runs-on: ubuntu-24.04
     strategy:
@@ -236,7 +233,7 @@ jobs:
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
-      
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -247,7 +244,7 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-        
+
       - name: Extract metadata (tags, labels) for Docker
         id: meta
         uses: docker/metadata-action@v5
@@ -261,7 +258,6 @@ jobs:
           M=${T%%.*}
           echo "GIT_TAG=$T" >> $GITHUB_ENV
           echo "MAJOR_TAG=$M" >> $GITHUB_ENV
-
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
@@ -297,14 +293,13 @@ jobs:
           M=${T%%.*}
           echo "GIT_TAG=$T" >> $GITHUB_ENV
           echo "MAJOR_TAG=$M" >> $GITHUB_ENV
-
       # Create and push manifest for :ve.rs.ion tag
       - name: Create and push manifest (:ve.rs.ion)
         uses: Noelware/docker-manifest-action@master
         if: github.event_name != 'workflow_dispatch'
         with:
-          base-image: ghcr.io/${{ github.repository }}:${{ env.GIT_TAG }}
-          extra-images: |
+          tags: ghcr.io/${{ github.repository }}:${{ env.GIT_TAG }}
+          inputs: |
             ghcr.io/${{ github.repository }}:${{ env.GIT_TAG }}-amd64,
             ghcr.io/${{ github.repository }}:${{ env.GIT_TAG }}-arm64v8,
             ghcr.io/${{ github.repository }}:${{ env.GIT_TAG }}-armv7,
@@ -315,8 +310,8 @@ jobs:
       - name: Create and push manifest (:major)
         uses: Noelware/docker-manifest-action@master
         with:
-          base-image: ghcr.io/${{ github.repository }}:${{ env.MAJOR_TAG }}
-          extra-images: |
+          tags: ghcr.io/${{ github.repository }}:${{ env.MAJOR_TAG }}
+          inputs: |
             ghcr.io/${{ github.repository }}:${{ env.MAJOR_TAG }}-amd64,
             ghcr.io/${{ github.repository }}:${{ env.MAJOR_TAG }}-arm64v8,
             ghcr.io/${{ github.repository }}:${{ env.MAJOR_TAG }}-armv7,
@@ -327,8 +322,8 @@ jobs:
       - name: Create and push manifest (:latest)
         uses: Noelware/docker-manifest-action@master
         with:
-          base-image: ghcr.io/${{ github.repository }}:${{ env.LATEST_TAG }}
-          extra-images: |
+          tags: ghcr.io/${{ github.repository }}:${{ env.LATEST_TAG }}
+          inputs: |
             ghcr.io/${{ github.repository }}:${{ env.LATEST_TAG }}-amd64,
             ghcr.io/${{ github.repository }}:${{ env.LATEST_TAG }}-arm64v8,
             ghcr.io/${{ github.repository }}:${{ env.LATEST_TAG }}-armv7,
