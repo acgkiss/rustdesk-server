@@ -49,15 +49,6 @@ jobs:
         with:
           prefix-key: ${{ matrix.job.os }}
 
-      # ✅ 新增：安装 musl 与交叉编译工具链
-      - name: Install musl-tools & cross‑compilers
-        run: |
-          sudo apt-get update                           # ✅ 新增
-          sudo apt-get install -y \
-            musl-tools \                                # ✅ 新增
-            gcc-arm-linux-gnueabihf \                   # ✅ 新增
-            gcc-aarch64-linux-gnu \                     # ✅ 新增
-            gcc-multilib                                # ✅ 新增
 
       # ✅ 新增：安装 cross 工具
       - name: Install cross
