@@ -31,31 +31,41 @@ jobs:
           - { name: "arm64v8", target: "aarch64-unknown-linux-musl" }
           - { name: "armv7",   target: "armv7-unknown-linux-musleabihf" }
           - { name: "i386",    target: "i686-unknown-linux-musl" }
-          #- { name: "amd64fb", target: "x86_64-unknown-freebsd" }
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           submodules: recursive
-    
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@v1
         with:
           toolchain: "1.70.0"
           targets: ${{ matrix.job.target }}
           components: "rustfmt"
-          
+
       - uses: Swatinem/rust-cache@v2
         with:
           prefix-key: ${{ matrix.job.os }}
 
-      - name: Build
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --release --all-features --target=${{ matrix.job.target }}
-          use-cross: true  
+      # ✅ 新增：安装 musl 与交叉编译工具链
+      - name: Install musl-tools & cross‑compilers
+        run: |
+          sudo apt-get update                           # ✅ 新增
+          sudo apt-get install -y \
+            musl-tools \                                # ✅ 新增
+            gcc-arm-linux-gnueabihf \                   # ✅ 新增
+            gcc-aarch64-linux-gnu \                     # ✅ 新增
+            gcc-multilib                                # ✅ 新增
+
+      # ✅ 新增：安装 cross 工具
+      - name: Install cross
+        run: cargo install cross --git https://github.com/cross-rs/cross  # ✅ 新增
+
+      # ✅ 修改：使用 cross 构建替换原 actions-rs/cargo
+      - name: Build with cross
+        run: cross build --release --all-features --target=${{ matrix.job.target }}  # ✅ 修改
 
       - name: Exec chmod
         run: chmod -v a+x target/${{ matrix.job.target }}/release/*
@@ -69,7 +79,7 @@ jobs:
             target/${{ matrix.job.target }}/release/hbbs
             target/${{ matrix.job.target }}/release/rustdesk-utils
           if-no-files-found: error
-  
+
   # Build and push single-arch Docker images to ghcr.io
   create-s6-overlay-images:
     name: Docker push - ${{ matrix.job.name }}
@@ -142,7 +152,7 @@ jobs:
             ghcr.io/${{ github.repository }}-s6:${{ env.GIT_TAG }}-${{ matrix.job.name }}
             ghcr.io/${{ github.repository }}-s6:${{ env.MAJOR_TAG }}-${{ matrix.job.name }}
           labels: ${{ steps.meta.outputs.labels }}
-
+          
   # Set up minifest and tag for pushed image
   create-s6-overlay-images-manifest:
     name: Manifest for s6-overlay images
