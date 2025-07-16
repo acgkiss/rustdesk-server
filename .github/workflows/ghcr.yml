@@ -56,7 +56,7 @@ jobs:
 
       # ✅ 修改：使用 cross 构建替换原 actions-rs/cargo
       - name: Build with cross
-        run: cross build --release --all-features --target=${{ matrix.job.target }}  # ✅ 修改
+        run: cross build --release --workspace --all-features --target=${{ matrix.job.target }}  # ✅ 修改
 
       - name: Exec chmod
         run: chmod -v a+x target/${{ matrix.job.target }}/release/*
